@@ -9,7 +9,11 @@ namespace Poker
         public string Name;
         public int Chips;
 
-        public Player(string name, int chips = 1000) { Name = name; Chips = chips; }
+        public Player(string name, int chips = 1000) 
+        { 
+            Name = name; 
+            Chips = chips; 
+        }
     }
 
     public class PokerGameManager : MonoBehaviour
