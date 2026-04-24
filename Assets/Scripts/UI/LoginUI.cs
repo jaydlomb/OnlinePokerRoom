@@ -31,7 +31,7 @@ namespace Poker.UI
                     if (success)
                     {
                         Debug.Log("Logged in!");
-                        // TODO: load next scene
+                        UnityEngine.SceneManagement.SceneManager.LoadScene("Matchmaking");
                     }
                     else
                     {

@@ -68,6 +68,16 @@ namespace Poker.Networking
             }
         }
 
+        public void UpdateChips(int chips)
+        {
+            Chips = chips;
+        }
+
+        public void UpdateRank(int rank)
+        {
+            Rank = rank;
+        }
+
         [Serializable]
         private class LoginResponse
         {
