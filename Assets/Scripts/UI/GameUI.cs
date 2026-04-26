@@ -1,10 +1,10 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 using Newtonsoft.Json;
 using PimDeWitte.UnityMainThreadDispatcher;
 using Poker.Networking;
-using System.Collections.Generic;
-using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
 
 namespace Poker.UI
 {
@@ -13,14 +13,16 @@ namespace Poker.UI
         [SerializeField] private TMP_Text potText;
         [SerializeField] private TMP_Text phaseText;
         [SerializeField] private TMP_Text currentBetText;
-        [SerializeField] private TMP_Text communityCardsText;
-        [SerializeField] private TMP_Text holeCardsText;
         [SerializeField] private TMP_Text actionText;
         [SerializeField] private Button foldButton;
         [SerializeField] private Button checkButton;
         [SerializeField] private Button callButton;
         [SerializeField] private Button raiseButton;
         [SerializeField] private TMP_InputField raiseAmountField;
+
+        [SerializeField] private Transform holeCardContainer;
+        [SerializeField] private Transform communityCardContainer;
+        [SerializeField] private GameObject cardPrefab;
 
         private string _lobbyID;
 
@@ -41,7 +43,13 @@ namespace Poker.UI
             {
                 var data = response.GetValue<HandData>();
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    holeCardsText.text = $"Your Hand: {string.Join(", ", data.cards)}");
+                {
+                    ClearCards(holeCardContainer);
+                    foreach (var card in data.cards)
+                    {
+                        SpawnCard(card, holeCardContainer);
+                    }
+                });
             });
 
             SocketManager.Instance.On("game:state", response =>
@@ -52,7 +60,12 @@ namespace Poker.UI
                     potText.text = $"Pot: {data.pot}";
                     phaseText.text = $"Phase: {data.phase}";
                     currentBetText.text = $"Current Bet: {data.currentBet}";
-                    communityCardsText.text = $"Community: {string.Join(", ", data.communityCards)}";
+
+                    ClearCards(communityCardContainer);
+                    foreach (var card in data.communityCards)
+                    {
+                        SpawnCard(card, communityCardContainer);
+                    }
                 });
             });
 
@@ -68,7 +81,7 @@ namespace Poker.UI
                     }
                     else
                     {
-                        actionText.text = $"Waiting for opponent...";
+                        actionText.text = "Waiting for opponent...";
                     }
                 });
             });
@@ -102,8 +115,20 @@ namespace Poker.UI
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
                     actionText.text = "Game Over!");
             });
+        }
 
-            SocketManager.Instance.Emit("Lobby:ready", new { lobbyID = _lobbyID });
+        private void SpawnCard(CardData card, Transform container)
+        {
+            GameObject obj = Instantiate(cardPrefab, container);
+            CardDisplay display = obj.GetComponent<CardDisplay>();
+            if (display != null)
+                display.SetCard(card.rank, card.suit);
+        }
+
+        private void ClearCards(Transform container)
+        {
+            foreach (Transform child in container)
+                Destroy(child.gameObject);
         }
 
         private void SendAction(string action, int amount)
@@ -126,9 +151,9 @@ namespace Poker.UI
             raiseButton.interactable = active;
         }
 
-        private class LobbyData { public string lobbyID; public List<object> players; }
-        private class HandData { public List<object> cards; }
-        private class GameState { public string phase; public int pot; public int currentBet; public List<object> communityCards; }
+        private class HandData { public List<CardData> cards; }
+        private class CardData { public int rank; public string suit; }
+        private class GameState { public string phase; public int pot; public int currentBet; public List<CardData> communityCards; }
         private class ActionRequest { public string userID; public List<string> actions; }
         private class ActionBroadcast { public string userID; public string action; public int amount; public int pot; }
         private class ShowdownData { public List<Winner> winners; }
