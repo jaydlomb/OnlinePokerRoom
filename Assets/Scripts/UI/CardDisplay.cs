@@ -16,10 +16,10 @@ namespace Poker.UI
         public void SetCard(int rank, string suit)
         {
             string rankName = GetRankName(rank);
-            string suitName = suit.ToLower();
-            string path = $"Cards/{char.ToUpper(suitName[0]) + suitName.Substring(1)}/{rankName}_of_{suitName}";
+            string suitLower = suit.ToLower();
+            string suitFolder = char.ToUpper(suitLower[0]) + suitLower.Substring(1).TrimEnd('s');
+            string path = $"Cards/{suitFolder}/{rankName}_of_{suitLower}";
             Sprite sprite = Resources.Load<Sprite>(path);
-
             if (sprite != null)
                 cardImage.sprite = sprite;
             else

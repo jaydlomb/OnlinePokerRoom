@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -100,7 +101,25 @@ namespace Poker.UI
             {
                 var data = response.GetValue<ShowdownData>();
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    actionText.text = $"Winner: {data.winners[0].userID} with {data.winners[0].hand}");
+                {
+                    if (data.winners != null && data.winners.Count > 0)
+                    {
+                        var w = data.winners[0];
+                        string handName = w.hand?.ToString() ?? "unknown hand";
+                        actionText.text = $"Winner: {w.userID}\n{handName}";
+                    }
+
+                    if (data.hands != null)
+                    {
+                        ClearCards(communityCardContainer);
+                        foreach (var playerHand in data.hands)
+                        {
+                            if (playerHand.userID == AuthManager.Instance.UserID) continue;
+                            foreach (var card in playerHand.cards)
+                                SpawnCard(card, communityCardContainer);
+                        }
+                    }
+                });
             });
 
             SocketManager.Instance.On("game:player_left", response =>
@@ -114,6 +133,13 @@ namespace Poker.UI
             {
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
                     actionText.text = "Game Over!");
+            });
+
+            Debug.Log("Emitting game:ready for lobby: " + _lobbyID);
+            SocketManager.Instance.Emit("game:ready", new
+            {
+                lobbyID = _lobbyID,
+                userID = AuthManager.Instance.UserID
             });
         }
 
@@ -156,7 +182,16 @@ namespace Poker.UI
         private class GameState { public string phase; public int pot; public int currentBet; public List<CardData> communityCards; }
         private class ActionRequest { public string userID; public List<string> actions; }
         private class ActionBroadcast { public string userID; public string action; public int amount; public int pot; }
-        private class ShowdownData { public List<Winner> winners; }
+        private class ShowdownData
+        {
+            public List<Winner> winners;
+            public List<PlayerHand> hands;
+        }
+        private class PlayerHand
+        {
+            public string userID;
+            public List<CardData> cards;
+        }
         private class Winner { public string userID; public object hand; }
         private class PlayerLeft { public string userID; public string action; }
     }

@@ -25,7 +25,6 @@ namespace Poker.UI
             countdownText.text = "";
             statusText.text = "";
 
-            // Listen for socket events
             SocketManager.Instance.On("queue:status", response =>
             {
                 var data = response.GetValue<QueueStatus>();
@@ -53,7 +52,10 @@ namespace Poker.UI
                 var data = response.GetValue<LobbyCreated>();
                 GameSession.LobbyID = data.lobbyID;
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    UnityEngine.SceneManagement.SceneManager.LoadScene("Gameplay"));
+                {
+                    SocketManager.Instance.ClearHandlers();
+                    SceneManager.LoadScene("Gameplay");
+                });
             });
         }
 
@@ -63,7 +65,6 @@ namespace Poker.UI
             findGameButton.gameObject.SetActive(false);
             leaveQueueButton.gameObject.SetActive(true);
             statusText.text = "Searching for game...";
-
             SocketManager.Instance.Emit("queue:join", new
             {
                 userID = AuthManager.Instance.UserID,
@@ -80,7 +81,6 @@ namespace Poker.UI
             leaveQueueButton.gameObject.SetActive(false);
             statusText.text = "";
             countdownText.text = "";
-
             SocketManager.Instance.Emit("queue:leave", new { });
         }
 
@@ -108,7 +108,10 @@ namespace Poker.UI
         {
             public int seconds;
         }
+
+        private class LobbyCreated
+        {
+            public string lobbyID;
+        }
     }
 }
-
-class LobbyCreated { public string lobbyID; }

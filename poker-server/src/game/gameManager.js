@@ -39,7 +39,13 @@ function broadcastGameState(io, game) {
         pot: game.pot,
         communityCards: game.communityCards,
         activePlayer: game.players[game.activePlayerIndex].userID,
-        currentBet: game.currentBet
+        currentBet: game.currentBet,
+        players: game.players.map(p => ({
+            userID: p.userID,
+            username: p.username,
+            chips: p.chips,
+            folded: p.folded
+        }))
     });
 }
 
@@ -128,7 +134,10 @@ function advanceTurn(io, game) {
         if (game.phase === 'river') {
             const winner = determineWinner(game);
             io.to(game.lobbyID).emit('game:showdown', {
-                winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }]
+                winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }],
+                hands: game.players
+                    .filter(p => !p.folded)
+                    .map(p => ({ userID: p.userID, cards: p.holeCards }))
             });
             setTimeout(() => startHand(io, game), 3000);
         } else {
@@ -152,7 +161,10 @@ function handlePlayerLeft(io, game, userID) {
     if (notFolded.length === 1) {
         const winner = determineWinner(game);
         io.to(game.lobbyID).emit('game:showdown', {
-            winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }]
+            winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }],
+            hands: game.players
+                .filter(p => !p.folded)
+                .map(p => ({ userID: p.userID, cards: p.holeCards }))
         });
         setTimeout(() => startHand(io, game), 3000);
     } else {
@@ -208,4 +220,4 @@ function getGame(lobbyID) {
     return activeGames[lobbyID];
 }
 
-module.exports = { startGame, handleAction, handlePlayerLeft, registerSocket, getGame };
+module.exports = { startGame, handleAction, handlePlayerLeft, registerSocket, getGame, broadcastGameState, requestAction };
