@@ -21,7 +21,10 @@ namespace Poker.UI
             string path = $"Cards/{suitFolder}/{rankName}_of_{suitLower}";
             Sprite sprite = Resources.Load<Sprite>(path);
             if (sprite != null)
+            {
                 cardImage.sprite = sprite;
+                cardImage.preserveAspect = true;
+            }
             else
                 Debug.LogError($"Card sprite not found: {path}");
         }

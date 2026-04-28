@@ -6,6 +6,7 @@ using TMPro;
 using Newtonsoft.Json;
 using PimDeWitte.UnityMainThreadDispatcher;
 using Poker.Networking;
+using System.Linq;
 
 namespace Poker.UI
 {
@@ -33,12 +34,15 @@ namespace Poker.UI
             checkButton.onClick.AddListener(() => SendAction("check", 0));
             callButton.onClick.AddListener(() => SendAction("call", 0));
             raiseButton.onClick.AddListener(() => {
-                int amount = int.TryParse(raiseAmountField.text, out int val) ? val : 0;
+                if (string.IsNullOrEmpty(raiseAmountField.text)) return;
+                if (!int.TryParse(raiseAmountField.text, out int amount)) return;
+                if (amount <= 0) return;
                 SendAction("raise", amount);
             });
 
             SetButtonsActive(false);
             _lobbyID = GameSession.LobbyID;
+            actionText.text = "";
 
             SocketManager.Instance.On("game:hand", response =>
             {
@@ -47,9 +51,7 @@ namespace Poker.UI
                 {
                     ClearCards(holeCardContainer);
                     foreach (var card in data.cards)
-                    {
                         SpawnCard(card, holeCardContainer);
-                    }
                 });
             });
 
@@ -64,9 +66,7 @@ namespace Poker.UI
 
                     ClearCards(communityCardContainer);
                     foreach (var card in data.communityCards)
-                    {
                         SpawnCard(card, communityCardContainer);
-                    }
                 });
             });
 
@@ -77,11 +77,15 @@ namespace Poker.UI
                 {
                     if (data.userID == AuthManager.Instance.UserID)
                     {
-                        SetButtonsActive(true);
+                        foldButton.interactable = data.actions.Contains("fold");
+                        checkButton.interactable = data.actions.Contains("check");
+                        callButton.interactable = data.actions.Contains("call");
+                        raiseButton.interactable = data.actions.Contains("raise");
                         actionText.text = "Your turn!";
                     }
                     else
                     {
+                        SetButtonsActive(false);
                         actionText.text = "Waiting for opponent...";
                     }
                 });
@@ -92,8 +96,9 @@ namespace Poker.UI
                 var data = response.GetValue<ActionBroadcast>();
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
                 {
-                    actionText.text = $"{data.userID} did {data.action} | Pot: {data.pot}";
-                    SetButtonsActive(false);
+                    string username = FindObjectOfType<PlayerSlotsManager>().GetUsername(data.userID);
+                    actionText.text = $"{username} did {data.action} | Pot: {data.pot}";
+                    StartCoroutine(ClearActionText());
                 });
             });
 
@@ -102,23 +107,35 @@ namespace Poker.UI
                 var data = response.GetValue<ShowdownData>();
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
                 {
+                    SetButtonsActive(false);
+
                     if (data.winners != null && data.winners.Count > 0)
                     {
                         var w = data.winners[0];
-                        string handName = w.hand?.ToString() ?? "unknown hand";
-                        actionText.text = $"Winner: {w.userID}\n{handName}";
-                    }
+                        string winnerName = FindObjectOfType<PlayerSlotsManager>().GetUsername(w.userID);
 
-                    if (data.hands != null)
-                    {
-                        ClearCards(communityCardContainer);
-                        foreach (var playerHand in data.hands)
+                        if (data.hands != null && data.hands.Count > 0)
                         {
-                            if (playerHand.userID == AuthManager.Instance.UserID) continue;
-                            foreach (var card in playerHand.cards)
-                                SpawnCard(card, communityCardContainer);
+                            // River showdown — reveal opponent hands
+                            foreach (var playerHand in data.hands)
+                            {
+                                if (playerHand.userID == AuthManager.Instance.UserID) continue;
+                                var slot = FindObjectOfType<PlayerSlotsManager>().GetSlotByUserID(playerHand.userID);
+                                if (slot != null && slot.GetCardContainer() != null)
+                                {
+                                    foreach (var card in playerHand.cards)
+                                        SpawnCard(card, slot.GetCardContainer());
+                                }
+                            }
+                            actionText.text = $"{winnerName} wins with {w.handName}!";
+                        }
+                        else
+                        {
+                            actionText.text = $"{winnerName} wins!";
                         }
                     }
+
+                    StartCoroutine(ClearCardsAfterDelay());
                 });
             });
 
@@ -126,7 +143,10 @@ namespace Poker.UI
             {
                 var data = response.GetValue<PlayerLeft>();
                 UnityMainThreadDispatcher.Instance().Enqueue(() =>
-                    actionText.text = $"{data.userID} left the game");
+                {
+                    string username = FindObjectOfType<PlayerSlotsManager>().GetUsername(data.userID);
+                    actionText.text = $"{username} left the game";
+                });
             });
 
             SocketManager.Instance.On("game:over", response =>
@@ -177,22 +197,37 @@ namespace Poker.UI
             raiseButton.interactable = active;
         }
 
+        private IEnumerator ClearActionText()
+        {
+            yield return new WaitForSeconds(3f);
+            actionText.text = "";
+        }
+
+        private IEnumerator ClearCardsAfterDelay()
+        {
+            yield return new WaitForSeconds(3f);
+            ClearCards(holeCardContainer);
+            ClearCards(communityCardContainer);
+            // Also clear opponent slot card containers
+            var slotsManager = FindObjectOfType<PlayerSlotsManager>();
+            if (slotsManager != null)
+            {
+                foreach (var slot in slotsManager.GetAllSlots())
+                {
+                    if (slot.GetCardContainer() != null)
+                        ClearCards(slot.GetCardContainer());
+                }
+            }
+        }
+
         private class HandData { public List<CardData> cards; }
         private class CardData { public int rank; public string suit; }
         private class GameState { public string phase; public int pot; public int currentBet; public List<CardData> communityCards; }
         private class ActionRequest { public string userID; public List<string> actions; }
         private class ActionBroadcast { public string userID; public string action; public int amount; public int pot; }
-        private class ShowdownData
-        {
-            public List<Winner> winners;
-            public List<PlayerHand> hands;
-        }
-        private class PlayerHand
-        {
-            public string userID;
-            public List<CardData> cards;
-        }
-        private class Winner { public string userID; public object hand; }
+        private class ShowdownData { public List<Winner> winners; public List<PlayerHand> hands; }
+        private class PlayerHand { public string userID; public List<CardData> cards; }
+        private class Winner { public string userID; public string handName; public object hand; }
         private class PlayerLeft { public string userID; public string action; }
     }
 }

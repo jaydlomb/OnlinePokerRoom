@@ -18,7 +18,6 @@ function startHand(io, game) {
 
     dealHands(game);
 
-    // Send each player their hole cards privately
     game.players.forEach(p => {
         const socket = getSocket(p.userID);
         console.log(`Socket for ${p.userID}: ${socket ? 'found' : 'NOT FOUND'}`);
@@ -33,7 +32,9 @@ function startHand(io, game) {
 }
 
 function broadcastGameState(io, game) {
-    const activePlayers = getActivePlayers(game);
+    console.log(`Broadcasting game state - player chips:`);
+    game.players.forEach(p => console.log(`  ${p.username}: ${p.chips} chips`));
+
     io.to(game.lobbyID).emit('game:state', {
         phase: game.phase,
         pot: game.pot,
@@ -93,6 +94,9 @@ function handleAction(io, game, userID, action, amount) {
             break;
     }
 
+    // Mark this player as having acted this round
+    game.actedThisRound.add(userID);
+
     io.to(game.lobbyID).emit('game:action_broadcast', {
         userID,
         action,
@@ -100,41 +104,33 @@ function handleAction(io, game, userID, action, amount) {
         pot: game.pot
     });
 
-    // Check if hand is over
-    const active = getActivePlayers(game);
     const notFolded = game.players.filter(p => !p.folded);
 
+    // Only one player left — they win without showdown, no need to reveal hands
     if (notFolded.length === 1) {
         const winner = determineWinner(game);
         io.to(game.lobbyID).emit('game:showdown', {
-            winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }]
+            winners: [{ userID: winner.userID, hand: winner.hand, handName: winner.hand?.name, pot: game.pot }],
+            hands: []
         });
         setTimeout(() => startHand(io, game), 3000);
         return;
     }
 
-    // Advance to next player or next phase
     advanceTurn(io, game);
 }
 
 function advanceTurn(io, game) {
-    const startIndex = game.activePlayerIndex;
-    let next = (startIndex + 1) % game.players.length;
-
-    while (game.players[next].folded || game.players[next].allIn) {
-        next = (next + 1) % game.players.length;
-        if (next === startIndex) break;
-    }
-
-    // Check if betting round is over
     const active = getActivePlayers(game);
-    const bettingDone = active.every(p => p.currentBet === game.currentBet);
+
+    const bettingDone = active.every(p => p.currentBet === game.currentBet) &&
+        active.every(p => game.actedThisRound.has(p.userID));
 
     if (bettingDone) {
         if (game.phase === 'river') {
             const winner = determineWinner(game);
             io.to(game.lobbyID).emit('game:showdown', {
-                winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }],
+                winners: [{ userID: winner.userID, hand: winner.hand, handName: winner.hand?.name, pot: game.pot }],
                 hands: game.players
                     .filter(p => !p.folded)
                     .map(p => ({ userID: p.userID, cards: p.holeCards }))
@@ -148,28 +144,71 @@ function advanceTurn(io, game) {
         return;
     }
 
+    const startIndex = game.activePlayerIndex;
+    let next = (startIndex + 1) % game.players.length;
+
+    while (game.players[next].folded || game.players[next].allIn) {
+        next = (next + 1) % game.players.length;
+        if (next === startIndex) break;
+    }
+
     game.activePlayerIndex = next;
+
     broadcastGameState(io, game);
     requestAction(io, game);
 }
 
 function handlePlayerLeft(io, game, userID) {
     const player = game.players.find(p => p.userID === userID);
-    if (player) player.folded = true;
+    if (!player) return;
 
-    const notFolded = game.players.filter(p => !p.folded);
-    if (notFolded.length === 1) {
-        const winner = determineWinner(game);
-        io.to(game.lobbyID).emit('game:showdown', {
-            winners: [{ userID: winner.userID, hand: winner.hand, pot: game.pot }],
-            hands: game.players
-                .filter(p => !p.folded)
-                .map(p => ({ userID: p.userID, cards: p.holeCards }))
-        });
-        setTimeout(() => startHand(io, game), 3000);
-    } else {
+    player.disconnected = true;
+    player.disconnectTimer = setTimeout(() => {
+        player.permanentlyRemoved = true;
+        io.to(game.lobbyID).emit('game:player_left', { userID, action: 'permanently_removed' });
+
+        const activePlayers = game.players.filter(p => !p.folded && !p.permanentlyRemoved);
+        if (activePlayers.length === 1) {
+            const winner = determineWinner(game);
+            io.to(game.lobbyID).emit('game:showdown', {
+                winners: [{ userID: winner.userID, hand: winner.hand, handName: winner.hand?.name, pot: game.pot }],
+                hands: []
+            });
+            setTimeout(() => startHand(io, game), 3000);
+        }
+    }, 2 * 60 * 1000);
+
+    io.to(game.lobbyID).emit('game:player_left', { userID, action: 'auto_fold' });
+
+    if (game.players[game.activePlayerIndex].userID === userID) {
         advanceTurn(io, game);
     }
+}
+
+function handlePlayerRejoined(io, game, userID, socket) {
+    const player = game.players.find(p => p.userID === userID);
+    if (!player || player.permanentlyRemoved) return false;
+
+    clearTimeout(player.disconnectTimer);
+    player.disconnected = false;
+    player.disconnectTimer = null;
+
+    registerSocket(userID, socket);
+    socket.join(game.lobbyID);
+
+    socket.emit('game:state', {
+        phase: game.phase,
+        pot: game.pot,
+        communityCards: game.communityCards,
+        activePlayer: game.players[game.activePlayerIndex].userID,
+        currentBet: game.currentBet
+    });
+
+    socket.emit('game:hand', { cards: player.holeCards });
+
+    io.to(game.lobbyID).emit('game:player_rejoined', { userID });
+
+    return true;
 }
 
 async function endGame(io, game) {
@@ -205,7 +244,6 @@ async function endGame(io, game) {
     delete activeGames[game.lobbyID];
 }
 
-// Socket registry
 const socketRegistry = {};
 
 function registerSocket(userID, socket) {
@@ -220,4 +258,4 @@ function getGame(lobbyID) {
     return activeGames[lobbyID];
 }
 
-module.exports = { startGame, handleAction, handlePlayerLeft, registerSocket, getGame, broadcastGameState, requestAction };
+module.exports = { startGame, handleAction, handlePlayerLeft, handlePlayerRejoined, registerSocket, getGame, broadcastGameState, requestAction };

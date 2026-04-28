@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { joinQueue, leaveQueue, getQueue, tryMatchmaking } = require('./matchmaking');
 const { createLobby, playerReady, allReady, getLobby, deleteLobby } = require('./lobby');
-const { startGame, handleAction, handlePlayerLeft, registerSocket, getGame, broadcastGameState, requestAction } = require('./game/gameManager');
+const { startGame, handleAction, handlePlayerLeft, handlePlayerRejoined, registerSocket, getGame, broadcastGameState, requestAction } = require('./game/gameManager');
 const { v4: uuidv4 } = require('uuid');
 
 let matchmakingTimer = null;
@@ -104,7 +104,7 @@ module.exports = (io) => {
             }
         });
 
-        // Game ready — resend state after Unity scene loads
+        // Game ready ï¿½ resend state after Unity scene loads
         socket.on('game:ready', (data) => {
             console.log(`game:ready received from ${data.userID} for lobby ${data.lobbyID}`);
             const game = getGame(data.lobbyID);
@@ -120,7 +120,7 @@ module.exports = (io) => {
             // Always broadcast state so all listeners catch it
             broadcastGameState(io, game);
 
-            // Track ready signals per lobby (2 per player — GameUI + PlayerSlotsManager)
+            // Track ready signals per lobby (2 per player ï¿½ GameUI + PlayerSlotsManager)
             if (!readyPlayers[data.lobbyID]) readyPlayers[data.lobbyID] = new Set();
             readyPlayers[data.lobbyID].add(`${data.userID}_${readyPlayers[data.lobbyID].size}`);
 
@@ -140,6 +140,20 @@ module.exports = (io) => {
             const game = getGame(lobbyID);
             if (!game) return;
             handleAction(io, game, userID, action, amount);
+        });
+
+        // Rejoin
+        socket.on('game:rejoin', (data) => {
+            const { lobbyID } = data;
+            const game = getGame(lobbyID);
+            if (!game) {
+                socket.emit('game:rejoin_failed', { reason: 'Game not found' });
+                return;
+            }
+            const success = handlePlayerRejoined(io, game, socket.userID, socket);
+            if (!success) {
+                socket.emit('game:rejoin_failed', { reason: 'Player permanently removed' });
+            }
         });
 
         // Disconnect

@@ -32,6 +32,7 @@ namespace Poker.UI
                         {
                             if (!_userToSlot.TryGetValue(p.userID, out int idx)) continue;
                             playerSlots[idx].UpdateChips(p.chips);
+                            Debug.Log($"Updating chips for {p.userID}: {p.chips}");
                             playerSlots[idx].SetFolded(p.folded);
                             playerSlots[idx].SetActiveTurn(p.userID == data.activePlayer);
                         }
@@ -55,6 +56,22 @@ namespace Poker.UI
                 userID = AuthManager.Instance.UserID
             });
         }
+
+        public string GetUsername(string userID)
+        {
+            if (_userToSlot.TryGetValue(userID, out int idx))
+                return playerSlots[idx].GetUsername();
+            return userID; // fallback to userID if not found
+        }
+
+        public PlayerSlotUI GetSlotByUserID(string userID)
+        {
+            if (_userToSlot.TryGetValue(userID, out int idx))
+                return playerSlots[idx];
+            return null;
+        }
+
+        public PlayerSlotUI[] GetAllSlots() => playerSlots;
 
         private void AssignSlots(List<PlayerInfo> players)
         {

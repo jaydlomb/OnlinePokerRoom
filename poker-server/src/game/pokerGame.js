@@ -43,7 +43,8 @@ function createGame(lobbyID, players) {
         handCount: 0,
         maxHands: 50,
         smallBlind: 5,
-        bigBlind: 10
+        bigBlind: 10,
+        actedThisRound: new Set()
     };
 }
 
@@ -54,6 +55,7 @@ function dealHands(game) {
     game.pot = 0;
     game.currentBet = 0;
     game.phase = 'preflop';
+    game.actedThisRound = new Set();
 
     game.players.forEach(p => {
         console.log(`Sending hole cards to ${p.userID}`);
@@ -91,6 +93,7 @@ function nextCommunityCards(game) {
     }
 
     game.currentBet = 0;
+    game.actedThisRound = new Set();
     game.players.forEach(p => p.currentBet = 0);
     game.activePlayerIndex = (game.dealerIndex + 1) % game.players.length;
 }
@@ -108,7 +111,8 @@ function determineWinner(game) {
         const result = getBestHand(p.holeCards, game.communityCards);
         if (result.rank > bestRank) {
             bestRank = result.rank;
-            winner = { ...p, hand: result };
+            winner = p;
+            winner.hand = result;
         }
     });
 

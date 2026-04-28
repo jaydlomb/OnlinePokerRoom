@@ -9,8 +9,12 @@ namespace Poker.UI
         [SerializeField] private TMP_Text chipCountText;
         [SerializeField] private GameObject activeTurnIndicator;
         [SerializeField] private GameObject foldedOverlay;
+        [SerializeField] private Transform cardContainer;
 
         public string AssignedUserID { get; private set; }
+
+        public string GetUsername() => usernameText.text;
+        public Transform GetCardContainer() => cardContainer;
 
         public void Assign(string userID, string username, int chips)
         {
