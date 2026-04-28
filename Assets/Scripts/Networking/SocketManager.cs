@@ -11,7 +11,8 @@ namespace Poker.Networking
     {
         public static SocketManager Instance;
         private SocketIOUnity _socket;
-        private string _serverURL = "http://localhost:3000";
+        private string _serverURL = "https://onlinepokerroom.onrender.com";
+        //private string _serverURL = "http://localhost:3000";
         private readonly Dictionary<string, List<Action<SocketIOResponse>>> _handlers = new();
 
         private void Awake()

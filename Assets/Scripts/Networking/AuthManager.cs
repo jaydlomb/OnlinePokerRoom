@@ -11,7 +11,8 @@ namespace Poker.Networking
     {
         public static AuthManager Instance;
 
-        private string _serverURL = "http://localhost:3000";
+        private string _serverURL = "https://onlinepokerroom.onrender.com";        
+        //private string _serverURL = "http://localhost:3000";
 
         public string UserID { get; private set; }
         public string Username { get; private set; }
@@ -43,6 +44,7 @@ namespace Poker.Networking
 
         public IEnumerator Login(string username, string password, Action<bool, string> callback)
         {
+            Debug.Log($"Attempting login to: {_serverURL}/auth/login");
             var body = JsonConvert.SerializeObject(new { username, password });
             var request = new UnityWebRequest($"{_serverURL}/auth/login", "POST");
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
@@ -50,6 +52,10 @@ namespace Poker.Networking
             request.SetRequestHeader("Content-Type", "application/json");
 
             yield return request.SendWebRequest();
+
+            Debug.Log($"Response code: {request.responseCode}");
+            Debug.Log($"Response: {request.downloadHandler.text}");
+            Debug.Log($"Result: {request.result}");
 
             if (request.result == UnityWebRequest.Result.Success)
             {
